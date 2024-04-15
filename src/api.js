@@ -2,7 +2,7 @@
 
 export default {
 	id: 'openai-auto-translate',
-	handler: ({ item_id, collection, translation_table, language_table }, { env, services, getSchema }) => {
+	handler: async ({ item_id, collection, language_table }, { env, services, getSchema }) => {
 		const OpenAIService = require('openai');
 
 		if(env.OPENAI_API_KEY == undefined) return "API Key not defined";
@@ -13,70 +13,68 @@ export default {
 		});
 
 		const output = [];
-		const errors = [];
 
 		const { ItemsService } = services;
-		const schema = getSchema();
-		const translations = new ItemsService(translation_table, { schema: schema });
-		const languages = new ItemsService(language_table, { schema: schema });
+		const schema = await getSchema();
+		const translations = await new ItemsService(`${collection}_translations`, { schema: schema });
+		const languages = await new ItemsService(language_table, { schema: schema });
+		//try {
+			const mainDS = await translations.readByQuery({ fields: ['*'], filter: { [`${collection}_id`]: { _eq: item_id }}});
+		// } catch (error) {
+		// 	if (error.response) {
+		// 		const response = JSON.parse(error.response);
+		// 		const message = response?.data?.status?.description;
+		// 		if (message) {
+		// 			throw new Error(message);
+		// 		}
+		// 	}
+		// 	throw new Error(error.message)
+		// }
+		if(!mainDS?.[0]) return 'No initial sample found.';
 
-		translations.readByQuery({ fields: ['*'], filter: { [`${collection}_id`]: { _eq: item_id }}}).then((items) => {
+		const languageDS = await languages.readByQuery({ fields: ['code','name'], filter: { code: { _neq: mainDS[0].languages_code } } });
+		//return {mainDS, languageDS};
+		if(!languageDS?.[0]) return 'No initial translation found.';
 
-			if(items[0] == undefined) return 'No initial sample found.';
+		let translation_item = mainDS[0];
+		delete translation_item['id'];
+		const json_sample = translation_item;
 
-			languages.readByQuery({ fields: ['code','name'], filter: { code: { _neq: items[0].languages_id } } }).then((langs) => {
-				
-				let translation_item = items[0];
-				delete translation_item['id'];
+		if(languageDS.length === 0) return 'No languages found in table.';
+		for (let i = 0; i < languageDS.length; i++) {
+			const foundData = await translations.readByQuery({ filter: { [`${collection}_id`]: { _eq: item_id }, languages_code: languageDS[i].code } });
+			//return {foundData};
+			output.push(await openapi_call(i, languageDS[i], json_sample, foundData?.[0]?.id));
+		};
 
-				const json_sample = translation_item;
+		await delay(languageDS.length * env.OPENAI_RATE_LIMIT);
 
-				if(langs.length === 0) return 'No languages found in table.';
+		return {output};
 
-				for (let i = 0; i < langs.length; i++) {
-					openapi_call(i, langs[i], json_sample);
-				};
+		async function openapi_call(i, lang, json_sample, translationId){
+			await delay(i * env.OPENAI_RATE_LIMIT);
 
-				delay(langs.length * env.OPENAI_RATE_LIMIT).then(() => {
-					console.log(output);
-					console.log(errors);
-					if(errors.length > 0) return errors;
-					return output;
-				});
-
+			const openaiResponse = await openai.chat.completions.create({
+				messages: [{ role: 'user', content: 'Translate the following JSON into '+lang.name+' '+JSON.stringify(json_sample) }],
+				model: 'gpt-3.5-turbo',
 			});
-		});
 
-		function openapi_call(i, lang, json_sample){
-			delay(i * env.OPENAI_RATE_LIMIT).then(() => {
-				openai.chat.completions.create({
-					messages: [{ role: 'user', content: 'Translate the following JSON into '+lang.name+' '+JSON.stringify(json_sample) }],
-					model: 'gpt-3.5-turbo',
-				}).then((openai_response) => {
-					//console.log(openai_response);
-					if(openai_response == undefined) return;
-					let translated_data = JSON.parse(openai_response.choices[0].message.content.replace("\\\"","\""));
-					translated_data.languages_id = lang.code;
-					//console.log(translated_data);
-					translations.createOne(translated_data).then((create_response) => {
-						//console.log(create_response);
-						output.push(create_response);
-						return;
-					}).catch((error) => {
-						console.log(error);
-						errors.push(error);
-						return;
-					});
-				}).catch((error) => {
-					console.log(error);
-					errors.push(error);
-					return;
-				});
-			});
+			if(openaiResponse == undefined) return {error: "No response from OpenAI"};
+
+			let translated_data = JSON.parse(openaiResponse.choices[0].message.content.replace("\\\"","\""));
+			translated_data.languages_code = lang.code;
+			//console.log(translated_data);
+			if(translationId) {
+				return await translations.updateOne(translationId, translated_data);
+			} else {
+				return await translations.createOne(translated_data);
+			}
 		}
 
 		function delay(ms) {
 			return new Promise(resolve => setTimeout(resolve, ms));
 		}
+
+
 	},
 };

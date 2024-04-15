@@ -2,7 +2,7 @@
 	"name": "directus-extension-directus-operation-auto-translate",
 	"description": "Please enter a description for your extension",
 	"icon": "extension",
-	"version": "1.0.0",
+	"version": "1.0.3",
 	"keywords": [
 		"directus",
 		"directus-extension",

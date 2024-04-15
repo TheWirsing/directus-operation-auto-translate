@@ -32,19 +32,19 @@ export default {
 				width: 'half',
 			},
 		},
-		{
-			field: 'translation_table',
-			name: 'Translation Table',
-			type: 'string',
-			meta: {
-				interface: 'system-collection',
-				options: {
-					includeSystem: true,
-					includeSingleton: false,
-				},
-				width: 'half',
-			},
-		},
+		// {
+		// 	field: 'translation_table',
+		// 	name: 'Translation Table',
+		// 	type: 'string',
+		// 	meta: {
+		// 		interface: 'system-collection',
+		// 		options: {
+		// 			includeSystem: true,
+		// 			includeSingleton: false,
+		// 		},
+		// 		width: 'half',
+		// 	},
+		// },
 		{
 			field: 'language_table',
 			name: 'Languages Table',
