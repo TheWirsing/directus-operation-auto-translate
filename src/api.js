@@ -1,5 +1,5 @@
 // import OpenAI from 'openai';
-
+// a comment
 export default {
 	id: 'openai-auto-translate',
 	handler: async ({ item_id, collection, language_table }, { env, services, getSchema }) => {
